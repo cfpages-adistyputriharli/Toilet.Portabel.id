@@ -1,0 +1,105 @@
+name: File Deleter v2
+on:
+  workflow_dispatch:
+    inputs:
+      delete_duplicates:
+        description: 'Delete duplicate files? (true/false)'
+        required: true
+        type: boolean
+        default: false
+      filename:
+        description: 'File name to delete (e.g., sample.html)'
+        required: false
+        type: string
+permissions:
+  contents: write
+jobs:
+  delete-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Find and delete specified files or duplicates
+        run: |
+          # Flag to track if any changes were made
+          CHANGES_MADE=false
+          
+          # Check if duplicate deletion is requested
+          if [ "${{ github.event.inputs.delete_duplicates }}" == "true" ]; then
+            echo "Searching for duplicate files..."
+            
+            # Find all HTML files
+            find . -type f -name "*.html" | while read -r file; do
+              # Extract base filename without -2
+              base_name=$(echo "$file" | sed -E 's/(-2)?\.html$/\.html/')
+              
+              # Find potential duplicate
+              duplicate=$(find . -type f -name "$(basename "$base_name" .html)-2.html")
+              
+              if [ -n "$duplicate" ] && [ "$file" != "$duplicate" ]; then
+                # Compare file sizes
+                file_size=$(stat -c %s "$file")
+                duplicate_size=$(stat -c %s "$duplicate")
+                
+                if [ "$file_size" -lt "$duplicate_size" ]; then
+                  # Current file is smaller
+                  echo "Deleting smaller file: $file"
+                  rm "$file"
+                  CHANGES_MADE=true
+                  
+                  # If deleted file was the original, rename duplicate
+                  if [[ "$file" != *"-2.html" ]]; then
+                    echo "Renaming $duplicate to $(basename "$base_name")"
+                    mv "$duplicate" "$base_name"
+                  fi
+                else
+                  # Duplicate is smaller
+                  echo "Deleting smaller file: $duplicate"
+                  rm "$duplicate"
+                  CHANGES_MADE=true
+                fi
+              fi
+            done
+          fi
+          
+          # Handle specific filename deletion if provided
+          if [ -n "${{ github.event.inputs.filename }}" ]; then
+            FILE_TO_DELETE="${{ github.event.inputs.filename }}"
+            
+            # Find all matching files and store their paths
+            FOUND_FILES=$(find . -name "$FILE_TO_DELETE")
+            
+            # Check if any files were found
+            if [ -z "$FOUND_FILES" ]; then
+              echo "No files matching '$FILE_TO_DELETE' were found."
+            else
+              # Print found files and delete them
+              echo "Found the following matching files:"
+              echo "$FOUND_FILES"
+              echo "Deleting files..."
+              
+              find . -name "$FILE_TO_DELETE" -exec rm -f {} \;
+              CHANGES_MADE=true
+            fi
+          fi
+          
+          # Check if any changes were made
+          if [ "$CHANGES_MADE" = false ]; then
+            echo "No files were deleted."
+            exit 0
+          fi
+          
+      - name: Commit changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Delete duplicate or specified files" || echo "No changes to commit"
+        
+      - name: Push changes
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}
+          git push origin HEAD:${GITHUB_REF#refs/heads/}
