@@ -1,0 +1,77 @@
+name: Update Empty JSON-LD URLs v1.6
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  update-jsonld-urls:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+    - name: Find and update empty URLs in JSON-LD schema
+      run: |
+        REPO_NAME="${GITHUB_REPOSITORY#*/}"
+        REPO_NAME=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
+        echo "Repository name: $REPO_NAME"
+        
+        find . -type f -name "*.html" | while read -r htmlFile; do
+          echo "Processing file: $htmlFile"
+          
+          # Get the relative path from the root of the repository
+          relativePath="${htmlFile#./}"
+          dirPath=$(dirname "$relativePath")
+          fileName=$(basename "$htmlFile" .html)
+          
+          # Special handling for index.html files
+          if [ "$fileName" = "index" ]; then
+            if [ "$dirPath" = "." ]; then
+              urlPath=""  # Homepage
+            else
+              urlPath="/$dirPath"  # Index in subfolder
+            fi
+          else
+            # Regular files
+            if [ "$dirPath" = "." ]; then
+              urlPath="/$fileName"
+            else
+              urlPath="/$dirPath/$fileName"
+            fi
+          fi
+          
+          # Remove any double slashes that might occur
+          urlPath=$(echo "$urlPath" | sed 's#//#/#g')
+          
+          # Construct the full URL
+          fullURL="https://$REPO_NAME$urlPath"
+          echo "Generated URL for $htmlFile: $fullURL"
+          
+          # Escape forward slashes and dots for perl
+          escapedURL=$(echo "$fullURL" | sed 's/\//\\\//g')
+          escapedBaseDomain=$(echo "https://$REPO_NAME" | sed 's/\//\\\//g')
+          
+          perl -i -pe '
+            BEGIN { undef $/; }
+            # Replace empty URLs
+            s/("url":\s*"")/"url":"'$escapedURL'"/g;
+            # Replace incorrect base URLs (from previous script)
+            s/("url":\s*")'$escapedBaseDomain'"/"url":"'$escapedURL'"/g;
+            # Replace empty @id in items
+            s/("item":\{"@id":\s*"")/"item":{"@id":"'$escapedURL'"/g;
+            # Replace incorrect @id in items
+            s/("item":\{"@id":\s*")'$escapedBaseDomain'"/"item":{"@id":"'$escapedURL'"/g;
+          ' "$htmlFile"
+          
+          if [ -s "$htmlFile" ]; then
+            echo "Successfully processed $htmlFile"
+          else
+            echo "Warning: Empty output file generated for $htmlFile"
+          fi
+        done
+    - name: Commit changes
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add .
+        git commit -m "Update empty and incorrect URLs in JSON-LD schema" || echo "No changes to commit"
+        git push origin HEAD:main || echo "No changes to push"
