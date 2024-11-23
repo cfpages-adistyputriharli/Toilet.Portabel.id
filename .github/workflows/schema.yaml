@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v1.6
+name: Update Empty JSON-LD URLs v1.7
 on:
   workflow_dispatch:
 permissions:
@@ -39,27 +39,27 @@ jobs:
             fi
           fi
           
-          # Remove any double slashes that might occur
-          urlPath=$(echo "$urlPath" | sed 's#//#/#g')
+          # Remove any double slashes that might occur and encode spaces
+          urlPath=$(echo "$urlPath" | sed 's#//#/#g' | sed 's/ /%20/g')
           
           # Construct the full URL
           fullURL="https://$REPO_NAME$urlPath"
           echo "Generated URL for $htmlFile: $fullURL"
           
-          # Escape forward slashes and dots for perl
-          escapedURL=$(echo "$fullURL" | sed 's/\//\\\//g')
-          escapedBaseDomain=$(echo "https://$REPO_NAME" | sed 's/\//\\\//g')
+          # Escape special characters for perl
+          escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
+          escapedBaseDomain=$(printf '%s\n' "https://$REPO_NAME" | sed 's:[][\/.^$*]:\\&:g')
           
           perl -i -pe '
             BEGIN { undef $/; }
             # Replace empty URLs
-            s/("url":\s*"")/"url":"'$escapedURL'"/g;
+            s/("url":\s*"")/"url":"'"$escapedURL"'"/g;
             # Replace incorrect base URLs (from previous script)
-            s/("url":\s*")'$escapedBaseDomain'"/"url":"'$escapedURL'"/g;
+            s/("url":\s*")'$escapedBaseDomain'"/"url":"'"$escapedURL"'"/g;
             # Replace empty @id in items
-            s/("item":\{"@id":\s*"")/"item":{"@id":"'$escapedURL'"/g;
+            s/("item":\{"@id":\s*"")/"item":{"@id":"'"$escapedURL"'"/g;
             # Replace incorrect @id in items
-            s/("item":\{"@id":\s*")'$escapedBaseDomain'"/"item":{"@id":"'$escapedURL'"/g;
+            s/("item":\{"@id":\s*")'$escapedBaseDomain'"/"item":{"@id":"'"$escapedURL"'"/g;
           ' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
