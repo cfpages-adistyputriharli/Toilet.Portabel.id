@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.9
+name: Update Empty JSON-LD URLs v3.0
 on:
   workflow_dispatch:
 permissions:
@@ -55,26 +55,30 @@ jobs:
           echo "Escaped Full URL (for Perl): $escapedURL"
           echo "Escaped Base URL (for Perl): $escapedBaseURL"
 
-          perl -i -0777 -pe "
+          perl -i -0777 -s -pe '
             BEGIN {
-              my \$escapedURL = q{$escapedURL};
-              my \$escapedBaseURL = q{$escapedBaseURL};
-              \$escapedURL =~ s#/#\\/#g;  # Escape slashes for regex
-              \$escapedBaseURL =~ s#/#\\/#g;  # Escape slashes for regex
+              print STDERR "Escaped URL: $escapedURL\n";
+              print STDERR "Escaped Base URL: $escapedBaseURL\n";
+
+              my $escapedURL = $url;
+              my $escapedBaseURL = $base;
+
+              $escapedURL =~ s#/#\\/#g;       # Escape slashes for regex
+              $escapedBaseURL =~ s#/#\\/#g;   # Escape slashes for regex
             }
 
-            s{(<script type=\"application/ld\\+json\" class=\"rank-math-schema\">)(.*?)(</script>)}{
-              my \$start = \$1;
-              my \$json = \$2;
-              my \$end = \$3;
+            s{(<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)}{
+              my $start = $1;
+              my $json = $2;
+              my $end = $3;
 
-              \$json =~ s{\"@id\":\\s*\"(?!https://secure\\.gravatar\\.com/)(?!\$escapedBaseURL)[^\"]*\"}{\"@id\":\"\$escapedURL\"}g;
-              \$json =~ s{\"url\":\\s*\"(?!https://secure\\.gravatar\\.com/)(?!\$escapedBaseURL)[^\"]*\"}{\"url\":\"\$escapedURL\"}g;
-              \$json =~ s{\"item\":\\s*\\{\"@id\":\\s*\"(?!https://secure\\.gravatar\\.com/)(?!\$escapedBaseURL)[^\"]*\"}{\"item\":{\"@id\":\"\$escapedURL\"}g;
+              $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"@id":"$escapedURL"}g;
+              $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"url":"$escapedURL"}g;
+              $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"item":{"@id":"$escapedURL"}g;
 
-              \$start . \$json . \$end;
+              $start . $json . $end;
             }ge;
-          " "$htmlFile"
+          ' -- -url="$escapedURL" -base="$escapedBaseURL" "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
             echo "Successfully processed $htmlFile"
