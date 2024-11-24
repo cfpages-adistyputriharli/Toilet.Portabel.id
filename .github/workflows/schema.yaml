@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.6
+name: Update Empty JSON-LD URLs v2.7
 on:
   workflow_dispatch:
 permissions:
@@ -50,19 +50,27 @@ jobs:
           # Escape special characters for perl
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[]\[\/.^$*]:\\&:g')
           escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[]\[\/.^$*]:\\&:g')
-          
+          echo "Escaped URL: $escapedURL"
+          echo "Escaped Base URL: $escapedBaseURL"
+
           perl -i -0777 -pe '
             s{(<script type="application\/ld\+json" class="rank-math-schema">)(.*?)(<\/script>)}{
               my $start = $1;
               my $json = $2;
               my $end = $3;
 
-              my $escapedURL = q('"$escapedURL"');
-              my $escapedBaseURL = q('"$escapedBaseURL"');
+              # Properly escape the URLs for regex
+              my $escapedURL = quotemeta("'"$escapedURL"'");
+              my $escapedBaseURL = quotemeta("'"$escapedBaseURL"'");
 
-              $json =~ s{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*)"}{"@id":"$escapedURL"}g;
-              $json =~ s{"url":\s*"((?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*)"}{"url":"$escapedURL"}g;
-              $json =~ s{"item":\s*\{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*)"}{"item":{"@id":"$escapedURL"}g;
+              # Update "@id" fields
+              $json =~ s{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*)"}{"@id":"$escapedURL"}g;
+
+              # Update "url" fields
+              $json =~ s{"url":\s*"((?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*)"}{"url":"$escapedURL"}g;
+
+              # Update "item" fields
+              $json =~ s{"item":\s*\{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*)"}{"item":{"@id":"$escapedURL"}g;
 
               $start . $json . $end;
             }ge;
