@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v1.8
+name: Update Empty JSON-LD URLs v1.9
 on:
   workflow_dispatch:
 permissions:
@@ -49,12 +49,11 @@ jobs:
           # Escape special characters for perl
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
           
-          perl -i -pe '
-            BEGIN { undef $/; }
+          perl -i -0777 -pe '
             # Replace any URL that doesnt match the correct one
-            s/("url":\s*")([^"]+)?(")/sprintf(q{"url":"%s"}, $2 && $2 ne "'"$escapedURL"'" ? "'"$escapedURL"'" : ($2 || "'"$escapedURL"'"))/ge;
+            s/("url":\s*")(.*?)(")/if ($2 eq "" || $2 ne "'"$escapedURL"'") { qq($1'"$escapedURL"'$3) } else { $& }/ge;
             # Replace any @id that doesnt match the correct one
-            s/("item":\{"@id":\s*")([^"]+)?(")/sprintf(q{"item":{"@id":"%s"}, $2 && $2 ne "'"$escapedURL"'" ? "'"$escapedURL"'" : ($2 || "'"$escapedURL"'"))/ge;
+            s/("item":\{"@id":\s*")(.*?)(")/if ($2 eq "" || $2 ne "'"$escapedURL"'") { qq($1'"$escapedURL"'$3) } else { $& }/ge;
           ' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
