@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v1.9
+name: Update Empty JSON-LD URLs v2.0
 on:
   workflow_dispatch:
 permissions:
@@ -44,16 +44,25 @@ jobs:
           
           # Construct the full URL
           fullURL="https://$REPO_NAME$urlPath"
+          baseURL="https://$REPO_NAME"
           echo "Generated URL for $htmlFile: $fullURL"
           
           # Escape special characters for perl
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
+          escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[][\/.^$*]:\\&:g')
           
           perl -i -0777 -pe '
-            # Replace any URL that doesnt match the correct one
-            s/("url":\s*")(.*?)(")/if ($2 eq "" || $2 ne "'"$escapedURL"'") { qq($1'"$escapedURL"'$3) } else { $& }/ge;
-            # Replace any @id that doesnt match the correct one
-            s/("item":\{"@id":\s*")(.*?)(")/if ($2 eq "" || $2 ne "'"$escapedURL"'") { qq($1'"$escapedURL"'$3) } else { $& }/ge;
+            # Replace incorrect URLs in @id fields, preserving Gravatar URLs
+            s/("@id":\s*")((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)(")/if ($2 eq "") { qq($1'"$escapedURL"'$3) } else { qq($1'"$escapedBaseURL"'$3) }/ge;
+            
+            # Replace incorrect URLs in url fields, preserving Gravatar URLs
+            s/("url":\s*")((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)(")/if ($2 eq "") { qq($1'"$escapedURL"'$3) } else { qq($1'"$escapedURL"'$3) }/ge;
+            
+            # Replace incorrect URLs in item fields
+            s/("item":\s*\{"@id":\s*")((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)(")/qq($1'"$escapedURL"'$3)/ge;
+            
+            # Fix any remaining incorrect URLs in the entire JSON-LD, preserving Gravatar URLs
+            s/(https?:\/\/(?!secure\.gravatar\.com\/)(?!'"$escapedBaseURL"'[^"]+)[^"]+)/'"$escapedBaseURL"'/g;
           ' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
@@ -67,5 +76,5 @@ jobs:
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         git add .
-        git commit -m "Update empty and incorrect URLs in JSON-LD schema" || echo "No changes to commit"
+        git commit -m "Update all incorrect URLs in JSON-LD schema" || echo "No changes to commit"
         git push origin HEAD:main || echo "No changes to push"
