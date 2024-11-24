@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.3
+name: Update Empty JSON-LD URLs v2.4
 on:
   workflow_dispatch:
 permissions:
@@ -51,20 +51,19 @@ jobs:
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
           escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[][\/.^$*]:\\&:g')
           
-          perl -i -0777 -e 'while (<>) {
-              s/(<script type="application\/ld\+json" class="rank-math-schema">)(.*?)(<\/script>)/
-                my $start = $1;
-                my $json = $2;
-                my $end = $3;
-                
-                $json =~ s/"@id":\s*"((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)"/"@id":"'"$escapedURL"'"/g;
-                $json =~ s/"url":\s*"((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)"/"url":"'"$escapedURL"'"/g;
-                $json =~ s/"item":\s*\{"@id":\s*"((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)"/"item":{"@id":"'"$escapedURL"'"/g;
-                
-                $start . $json . $end
-              /ge;
-              print;
-            }' "$htmlFile"
+          perl -i -0777 -pe '
+            s/(<script type="application\/ld\+json" class="rank-math-schema">)(.*?)(<\/script>)/
+              my $start = $1;
+              my $json = $2;
+              my $end = $3;
+              
+              $json =~ s!\x22\@id\x22:\s*\x22((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^\x22]+|\x22)!\x22\@id\x22:\x22'"$escapedURL"'\x22!g;
+              $json =~ s!\x22url\x22:\s*\x22((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^\x22]+|\x22)!\x22url\x22:\x22'"$escapedURL"'\x22!g;
+              $json =~ s!\x22item\x22:\s*\{\x22\@id\x22:\s*\x22((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^\x22]+|\x22)!\x22item\x22:{\x22\@id\x22:\x22'"$escapedURL"'\x22!g;
+              
+              $start . $json . $end
+            /ge;
+          ' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
             echo "Successfully processed $htmlFile"
