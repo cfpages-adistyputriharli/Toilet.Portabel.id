@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.2
+name: Update Empty JSON-LD URLs v2.3
 on:
   workflow_dispatch:
 permissions:
@@ -51,33 +51,20 @@ jobs:
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
           escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[][\/.^$*]:\\&:g')
           
-          perl -i -0777 -e '
-            while (<>) {
-              s{(<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)}{
+          perl -i -0777 -e 'while (<>) {
+              s/(<script type="application\/ld\+json" class="rank-math-schema">)(.*?)(<\/script>)/
                 my $start = $1;
                 my $json = $2;
                 my $end = $3;
                 
-                # Replace incorrect URLs in @id fields
-                $json =~ s{("@id":\s*")((?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^"]+|)(")}{
-                  $2 eq "" ? qq{$1'"$escapedURL"'$3} : qq{$1'"$escapedBaseURL"'$3}
-                }ge;
+                $json =~ s/"@id":\s*"((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)"/"@id":"'"$escapedURL"'"/g;
+                $json =~ s/"url":\s*"((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)"/"url":"'"$escapedURL"'"/g;
+                $json =~ s/"item":\s*\{"@id":\s*"((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)"/"item":{"@id":"'"$escapedURL"'"/g;
                 
-                # Replace incorrect URLs in url fields
-                $json =~ s{("url":\s*")((?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^"]+|)(")}{
-                  $2 eq "" ? qq{$1'"$escapedURL"'$3} : qq{$1'"$escapedURL"'$3}
-                }ge;
-                
-                # Replace incorrect URLs in item fields
-                $json =~ s{("item":\s*\{"@id":\s*")((?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^"]+|)(")}{
-                  qq{$1'"$escapedURL"'$3}
-                }ge;
-                
-                "$start$json$end";
-              }ges;
+                $start . $json . $end
+              /ge;
               print;
-            }
-          ' "$htmlFile"
+            }' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
             echo "Successfully processed $htmlFile"
