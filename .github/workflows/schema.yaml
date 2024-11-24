@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v3.0
+name: Update Schema JSON-LD URLs v3.0 perl
 on:
   workflow_dispatch:
 permissions:
@@ -9,21 +9,59 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
-    - name: Find and update empty URLs in JSON-LD schema
+
+    - name: Create Perl Script for Updating JSON-LD URLs
+      run: |
+        cat <<'EOF' > update_jsonld.pl
+        #!/usr/bin/perl
+
+        use strict;
+        use warnings;
+
+        # Get arguments passed to the script
+        my ($htmlFile, $escapedURL, $escapedBaseURL) = @ARGV;
+
+        # Open the file for reading
+        open my $fh, '<', $htmlFile or die "Could not open '$htmlFile' for reading: $!";
+        local $/; # Enable slurp mode
+        my $content = <$fh>;
+        close $fh;
+
+        # Perform the substitutions
+        $content =~ s{(<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)}{
+            my $start = $1;
+            my $json = $2;
+            my $end = $3;
+
+            $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"@id":"$escapedURL"}g;
+            $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"url":"$escapedURL"}g;
+            $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"item":{"@id":"$escapedURL"}g;
+
+            $start . $json . $end;
+        }ge;
+
+        # Write the updated content back to the file
+        open my $out, '>', $htmlFile or die "Could not open '$htmlFile' for writing: $!";
+        print $out $content;
+        close $out;
+        EOF
+
+        chmod +x update_jsonld.pl
+
+    - name: Update Empty URLs in JSON-LD Schema
       run: |
         REPO_NAME="${GITHUB_REPOSITORY#*/}"
         REPO_NAME=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
         echo "Repository name: $REPO_NAME"
-        
+
         find . -type f -name "*.html" | while read -r htmlFile; do
           echo "Processing file: $htmlFile"
-          
-          # Get the relative path from the root of the repository
+
+          # Construct URLs
           relativePath="${htmlFile#./}"
           dirPath=$(dirname "$relativePath")
           fileName=$(basename "$htmlFile" .html)
-          
-          # Special handling for index.html files
+
           if [ "$fileName" = "index" ]; then
             if [ "$dirPath" = "." ]; then
               urlPath=""  # Homepage
@@ -31,61 +69,28 @@ jobs:
               urlPath="/$dirPath"  # Index in subfolder
             fi
           else
-            # Regular files
             if [ "$dirPath" = "." ]; then
               urlPath="/$fileName"
             else
               urlPath="/$dirPath/$fileName"
             fi
           fi
-          
-          # Remove any double slashes that might occur and encode spaces
+
+          # Remove double slashes and encode spaces
           urlPath=$(echo "$urlPath" | sed 's#//#/#g' | sed 's/ /%20/g')
-          
-          # Construct the full URL
+
+          # Construct full and base URLs
           fullURL="https://$REPO_NAME$urlPath"
           baseURL="https://$REPO_NAME"
-          echo "Generated URL for $htmlFile: $fullURL"
-          
-          # Escape special characters for perl
-          escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[]\[\/.^$*]:\\&:g')
-          escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[]\[\/.^$*]:\\&:g')
-          echo "Debugging Variables:"
-          echo "URL Path: $urlPath"
-          echo "Escaped Full URL (for Perl): $escapedURL"
-          echo "Escaped Base URL (for Perl): $escapedBaseURL"
 
-          perl -i -0777 -s -pe '
-            BEGIN {
-              print STDERR "Escaped URL: $escapedURL\n";
-              print STDERR "Escaped Base URL: $escapedBaseURL\n";
+          # Debugging outputs
+          echo "Generated URL: $fullURL"
+          echo "Base URL: $baseURL"
 
-              my $escapedURL = $url;
-              my $escapedBaseURL = $base;
-
-              $escapedURL =~ s#/#\\/#g;       # Escape slashes for regex
-              $escapedBaseURL =~ s#/#\\/#g;   # Escape slashes for regex
-            }
-
-            s{(<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)}{
-              my $start = $1;
-              my $json = $2;
-              my $end = $3;
-
-              $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"@id":"$escapedURL"}g;
-              $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"url":"$escapedURL"}g;
-              $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"item":{"@id":"$escapedURL"}g;
-
-              $start . $json . $end;
-            }ge;
-          ' -- -url="$escapedURL" -base="$escapedBaseURL" "$htmlFile"
-          
-          if [ -s "$htmlFile" ]; then
-            echo "Successfully processed $htmlFile"
-          else
-            echo "Warning: Empty output file generated for $htmlFile"
-          fi
+          # Call the external Perl script
+          ./update_jsonld.pl "$htmlFile" "$fullURL" "$baseURL"
         done
+
     - name: Commit changes
       run: |
         git config --global user.name 'github-actions[bot]'
