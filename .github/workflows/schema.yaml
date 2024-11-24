@@ -1,4 +1,4 @@
-name: Update Schema JSON-LD URLs v3.1 perl
+name: Update Schema JSON-LD URLs v3.2 perl
 on:
   workflow_dispatch:
 permissions:
@@ -12,6 +12,10 @@ jobs:
 
     - name: Create Perl Script for Updating JSON-LD URLs
       run: |
+        echo "File: $htmlFile"
+        echo "Full URL: $fullURL"
+        echo "Base URL: $baseURL"
+
         cat <<'EOF' > update_jsonld.pl
         #!/usr/bin/perl
 
@@ -21,6 +25,10 @@ jobs:
         # Get arguments passed to the script
         my ($htmlFile, $escapedURL, $escapedBaseURL) = @ARGV;
 
+        # Ensure escaped variables are properly handled
+        $escapedURL = quotemeta($escapedURL);
+        $escapedBaseURL = quotemeta($escapedBaseURL);
+
         # Open the file for reading
         open my $fh, '<', $htmlFile or die "Could not open '$htmlFile' for reading: $!";
         local $/; # Enable slurp mode
@@ -29,16 +37,20 @@ jobs:
 
         # Perform the substitutions
         $content =~ s{
-            (<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)
+            (<script\s+type="application/ld\+json"\s+class="rank-math-schema">)(.*?)(</script>)
         }{
             my $start = $1;
             my $json = $2;
             my $end = $3;
 
-            # Use \Q...\E to safely escape the replacement variables
-            $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"@id":"\Q$escapedURL\E"}g;
-            $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"url":"\Q$escapedURL\E"}g;
-            $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"item":{"@id":"\Q$escapedURL\E"}g;
+            # Replace @id
+            $json =~ s/"@id":\s*"(?!https:\/\/secure\.gravatar\.com\/)(?!$escapedBaseURL)[^"]*"/"@id":"$escapedURL"/g;
+
+            # Replace url
+            $json =~ s/"url":\s*"(?!https:\/\/secure\.gravatar\.com\/)(?!$escapedBaseURL)[^"]*"/"url":"$escapedURL"/g;
+
+            # Replace item @id
+            $json =~ s/"item":\s*\{"@id":\s*"(?!https:\/\/secure\.gravatar\.com\/)(?!$escapedBaseURL)[^"]*"/"item":{"@id":"$escapedURL"/g;
 
             $start . $json . $end;
         }gex;
