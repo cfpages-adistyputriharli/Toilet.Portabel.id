@@ -1,4 +1,4 @@
-name: Update Schema JSON-LD URLs v3.0 perl
+name: Update Schema JSON-LD URLs v3.1 perl
 on:
   workflow_dispatch:
 permissions:
@@ -28,17 +28,20 @@ jobs:
         close $fh;
 
         # Perform the substitutions
-        $content =~ s{(<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)}{
+        $content =~ s{
+            (<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)
+        }{
             my $start = $1;
             my $json = $2;
             my $end = $3;
 
-            $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"@id":"$escapedURL"}g;
-            $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"url":"$escapedURL"}g;
-            $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"item":{"@id":"$escapedURL"}g;
+            # Use \Q...\E to safely escape the replacement variables
+            $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"@id":"\Q$escapedURL\E"}g;
+            $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"url":"\Q$escapedURL\E"}g;
+            $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*"}{"item":{"@id":"\Q$escapedURL\E"}g;
 
             $start . $json . $end;
-        }ge;
+        }gex;
 
         # Write the updated content back to the file
         open my $out, '>', $htmlFile or die "Could not open '$htmlFile' for writing: $!";
