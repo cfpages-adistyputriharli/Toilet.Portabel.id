@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.5
+name: Update Empty JSON-LD URLs v2.6
 on:
   workflow_dispatch:
 permissions:
@@ -56,11 +56,14 @@ jobs:
               my $start = $1;
               my $json = $2;
               my $end = $3;
-              
-              $json =~ s{\"@id\":\s*\"(?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^\"]*\"}{\"@id\":\"'"$escapedURL"'\""}g;
-              $json =~ s{\"url\":\s*\"(?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^\"]*\"}{\"url\":\"'"$escapedURL"'\""}g;
-              $json =~ s{\"item\":\s*\{\"@id\":\s*\"(?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^\"]*\"}{\"item\":{\"@id\":\"'"$escapedURL"'\""}g;
-              
+
+              my $escapedURL = q('"$escapedURL"');
+              my $escapedBaseURL = q('"$escapedBaseURL"');
+
+              $json =~ s{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*)"}{"@id":"$escapedURL"}g;
+              $json =~ s{"url":\s*"((?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*)"}{"url":"$escapedURL"}g;
+              $json =~ s{"item":\s*\{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!\Q$escapedBaseURL\E)[^"]*)"}{"item":{"@id":"$escapedURL"}g;
+
               $start . $json . $end;
             }ge;
           ' "$htmlFile"
