@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.7
+name: Update Empty JSON-LD URLs v2.8
 on:
   workflow_dispatch:
 permissions:
@@ -50,7 +50,8 @@ jobs:
           # Escape special characters for perl
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[]\[\/.^$*]:\\&:g')
           escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[]\[\/.^$*]:\\&:g')
-          echo "Escaped URL: $escapedURL"
+          echo "URL Path: $urlPath"
+          echo "Escaped Full URL: $escapedURL"
           echo "Escaped Base URL: $escapedBaseURL"
 
           perl -i -0777 -pe '
@@ -59,18 +60,15 @@ jobs:
               my $json = $2;
               my $end = $3;
 
-              # Properly escape the URLs for regex
-              my $escapedURL = quotemeta("'"$escapedURL"'");
-              my $escapedBaseURL = quotemeta("'"$escapedBaseURL"'");
+              my $escapedURL = q(https://'"$REPO_NAME"'/'"$urlPath"');
+              my $escapedBaseURL = q(https://'"$REPO_NAME"');
 
-              # Update "@id" fields
-              $json =~ s{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*)"}{"@id":"$escapedURL"}g;
+              $escapedURL =~ s#/#\\/#g;  # Escape slashes for regex
+              $escapedBaseURL =~ s#/#\\/#g;  # Escape slashes for regex
 
-              # Update "url" fields
-              $json =~ s{"url":\s*"((?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*)"}{"url":"$escapedURL"}g;
-
-              # Update "item" fields
-              $json =~ s{"item":\s*\{"@id":\s*"((?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*)"}{"item":{"@id":"$escapedURL"}g;
+              $json =~ s{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"@id":"$escapedURL"}g;
+              $json =~ s{"url":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"url":"$escapedURL"}g;
+              $json =~ s{"item":\s*\{"@id":\s*"(?!https://secure\.gravatar\.com/)(?!$escapedBaseURL)[^"]*"}{"item":{"@id":"$escapedURL"}g;
 
               $start . $json . $end;
             }ge;
