@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v2.1
+name: Update Empty JSON-LD URLs v2.2
 on:
   workflow_dispatch:
 permissions:
@@ -51,28 +51,32 @@ jobs:
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
           escapedBaseURL=$(printf '%s\n' "$baseURL" | sed 's:[][\/.^$*]:\\&:g')
           
-          perl -i -0777 -pe '
-            # Process only within JSON-LD schema tags
-            s/(<script type="application\/ld\+json" class="rank-math-schema">)(.*?)(<\/script>)/
-              my $start = $1;
-              my $json = $2;
-              my $end = $3;
-              
-              # Replace incorrect URLs in @id fields
-              $json =~ s/("@id":\s*")((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)(")/
-                $2 eq "" ? qq($1'"$escapedURL"'$3) : qq($1'"$escapedBaseURL"'$3)/ge;
-              
-              # Replace incorrect URLs in url fields
-              $json =~ s/("url":\s*")((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)(")/
-                $2 eq "" ? qq($1'"$escapedURL"'$3) : qq($1'"$escapedURL"'$3)/ge;
-              
-              # Replace incorrect URLs in item fields
-              $json =~ s/("item":\s*\{"@id":\s*")((?!https:\/\/secure\.gravatar\.com\/)(?!'"$escapedBaseURL"')[^"]+|)(")/
-                qq($1'"$escapedURL"'$3)/ge;
-              
-              # Return the modified JSON-LD
-              $start . $json . $end;
-            /ge;
+          perl -i -0777 -e '
+            while (<>) {
+              s{(<script type="application/ld\+json" class="rank-math-schema">)(.*?)(</script>)}{
+                my $start = $1;
+                my $json = $2;
+                my $end = $3;
+                
+                # Replace incorrect URLs in @id fields
+                $json =~ s{("@id":\s*")((?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^"]+|)(")}{
+                  $2 eq "" ? qq{$1'"$escapedURL"'$3} : qq{$1'"$escapedBaseURL"'$3}
+                }ge;
+                
+                # Replace incorrect URLs in url fields
+                $json =~ s{("url":\s*")((?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^"]+|)(")}{
+                  $2 eq "" ? qq{$1'"$escapedURL"'$3} : qq{$1'"$escapedURL"'$3}
+                }ge;
+                
+                # Replace incorrect URLs in item fields
+                $json =~ s{("item":\s*\{"@id":\s*")((?!https://secure\.gravatar\.com/)(?!'"$escapedBaseURL"')[^"]+|)(")}{
+                  qq{$1'"$escapedURL"'$3}
+                }ge;
+                
+                "$start$json$end";
+              }ges;
+              print;
+            }
           ' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
