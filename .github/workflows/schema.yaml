@@ -1,4 +1,4 @@
-name: Update Empty JSON-LD URLs v1.7
+name: Update Empty JSON-LD URLs v1.8
 on:
   workflow_dispatch:
 permissions:
@@ -48,18 +48,13 @@ jobs:
           
           # Escape special characters for perl
           escapedURL=$(printf '%s\n' "$fullURL" | sed 's:[][\/.^$*]:\\&:g')
-          escapedBaseDomain=$(printf '%s\n' "https://$REPO_NAME" | sed 's:[][\/.^$*]:\\&:g')
           
           perl -i -pe '
             BEGIN { undef $/; }
-            # Replace empty URLs
-            s/("url":\s*"")/"url":"'"$escapedURL"'"/g;
-            # Replace incorrect base URLs (from previous script)
-            s/("url":\s*")'$escapedBaseDomain'"/"url":"'"$escapedURL"'"/g;
-            # Replace empty @id in items
-            s/("item":\{"@id":\s*"")/"item":{"@id":"'"$escapedURL"'"/g;
-            # Replace incorrect @id in items
-            s/("item":\{"@id":\s*")'$escapedBaseDomain'"/"item":{"@id":"'"$escapedURL"'"/g;
+            # Replace any URL that doesnt match the correct one
+            s/("url":\s*")([^"]+)?(")/sprintf(q{"url":"%s"}, $2 && $2 ne "'"$escapedURL"'" ? "'"$escapedURL"'" : ($2 || "'"$escapedURL"'"))/ge;
+            # Replace any @id that doesnt match the correct one
+            s/("item":\{"@id":\s*")([^"]+)?(")/sprintf(q{"item":{"@id":"%s"}, $2 && $2 ne "'"$escapedURL"'" ? "'"$escapedURL"'" : ($2 || "'"$escapedURL"'"))/ge;
           ' "$htmlFile"
           
           if [ -s "$htmlFile" ]; then
