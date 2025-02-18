@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?><rss version="2.0"
+	xmlns:media="http://search.yahoo.com/mrss/"
 	xmlns:content="http://purl.org/rss/1.0/modules/content/"
 	xmlns:dc="http://purl.org/dc/elements/1.1/"
 	xmlns:atom="http://www.w3.org/2005/Atom"
@@ -7,15 +8,15 @@
 	>
 <channel>
 	<title>
-	Comments for Toilet.Portabel.id | Jual &amp; Sewa Toilet Portable #1	</title>
+	Comments for Toilet.Portabel.id	</title>
 	<atom:link href="/comments/feed" rel="self" type="application/rss+xml" />
 	<link>/</link>
-	<description>Toilet.Portabel.id</description>
-	<lastBuildDate>Fri, 28 Oct 2022 02:43:15 +0000</lastBuildDate>
+	<description>Jual &#38; Sewa Toilet Portabel Terlengkap #1 Indonesia</description>
+	<lastBuildDate>Tue, 18 Feb 2025 09:32:54 +0000</lastBuildDate>
 	<sy:updatePeriod>
 	hourly	</sy:updatePeriod>
 	<sy:updateFrequency>
 	1	</sy:updateFrequency>
-	<generator>https://wordpress.org/?v=6.0.3</generator>
+	<generator>https://wordpress.org/?v=6.7.1</generator>
 </channel>
 </rss>
