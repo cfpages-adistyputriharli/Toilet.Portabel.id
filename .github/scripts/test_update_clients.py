@@ -322,6 +322,8 @@ class ClientsTests(unittest.TestCase):
             self.assertIn(expression, workflow)
         self.assertNotIn("env.DRY_RUN", workflow)
         self.assertNotIn("runner.temp", workflow)
+        self.assertIn("git --literal-pathspecs add", workflow)
+        self.assertNotIn("git add --literal-pathspecs", workflow)
         cases = (
             ("push", "branch", True, False),
             ("workflow_dispatch", "branch", True, True),
