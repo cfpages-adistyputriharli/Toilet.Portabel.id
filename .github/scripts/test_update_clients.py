@@ -316,9 +316,12 @@ class ClientsTests(unittest.TestCase):
             '"$GITHUB_EVENT_NAME" == "workflow_dispatch"',
             '"$GITHUB_REF_TYPE" != "branch"',
             '"$INPUT_DRY_RUN" == "true"',
+            '"$RUNNER_TEMP/clients-summary.json"',
+            '"$RUNNER_TEMP/clients-changed-paths"',
         ):
             self.assertIn(expression, workflow)
         self.assertNotIn("env.DRY_RUN", workflow)
+        self.assertNotIn("runner.temp", workflow)
         cases = (
             ("push", "branch", True, False),
             ("workflow_dispatch", "branch", True, True),
