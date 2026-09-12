@@ -115,6 +115,23 @@ class ClientsTests(unittest.TestCase):
             parsed = MODULE.parse_clients(path)
             self.assertEqual((parsed[0].name, parsed[0].phone), (NEW_NAME, NEW_PHONE))
 
+    def test_percent_encoded_whatsapp_marker(self):
+        tracked = "https://klik.kubikel.id/%F0%9F%92%AC-anthock-toiletkubikelcoid"
+        path = self.root / ".clients"
+        path.write_text(client().replace(NEW_WA, tracked), encoding="utf-8")
+        self.assertEqual(MODULE.parse_clients(path)[0].whatsapp, tracked)
+
+    def test_nested_contact_blocks_are_recognized(self):
+        alternate = "0811 1111 1111 (Other Fixture)"
+        target = self.write_fixture(
+            content=f'<div class="wrapper">{html().replace(f"{OLD_PHONE} ({OLD_NAME})", alternate, 1)}</div>'
+        )
+        (self.root / ".clients").write_text(client(), encoding="utf-8")
+        self.assertEqual(MODULE.update(self.root, self.root / ".clients", False)["changed_count"], 1)
+        changed = target.read_text(encoding="utf-8")
+        self.assertIn(NEW_WA, changed)
+        self.assertNotIn(alternate, changed)
+
     def test_five_and_six_field_records_and_category_filter(self):
         cases = [
             (OLD_ADDRESS, False, True),

@@ -13,7 +13,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 class ClientsError(Exception):
@@ -46,7 +46,9 @@ CATEGORY_FILTER_RE = re.compile(
 PHONE_RE = re.compile(r"\+?[0-9][0-9 ()+.\-]{6,}[0-9]\Z")
 ADDRESS_RE = re.compile(r"(?:Jl\.|Jalan|Ruko|Perumahan)\s+[^<\r\n]+")
 DIV_RE = re.compile(
-    r"<div\b(?P<attrs>[^>]*\bclass\s*=\s*(?P<q>[\"'])(?P<class>.*?)(?P=q)[^>]*)>"
+    r"<div\b(?P<attrs>[^>]*\bclass\s*=\s*(?P<q>[\"'])"
+    r"(?P<class>[^\"']*\b(?:whatsapp-floating|sms-floating|tlp-floating)\b[^\"']*)"
+    r"(?P=q)[^>]*)>"
     r"(?P<body>.*?)</div\s*>",
     re.IGNORECASE | re.DOTALL,
 )
@@ -75,9 +77,10 @@ def _route_role(value: str) -> str | None:
         scheme, host = _valid_url(value)
     except ValueError:
         return None
-    lower = value.casefold()
+    decoded = unquote(value)
+    lower = decoded.casefold()
     whatsapp = (
-        "💬" in value
+        "💬" in decoded
         or "whatsapp" in lower
         or host == "wa.me"
         or host.endswith(".whatsapp.com")
@@ -270,11 +273,13 @@ def _transform(text: str, client: Client) -> tuple[bool, str]:
         if "tlp-floating" in markers:
             telephone.extend(hrefs)
 
-    old_display = _one(displays, "displayed phone/name")
+    old_displays = tuple(dict.fromkeys(displays))
+    if not old_displays:
+        raise ClientsError("matched HTML is missing displayed phone/name")
     old_whatsapp = _one(whatsapp, "WhatsApp route")
     old_telephone = _one(telephone, "telephone route")
     replacements = [
-        (old_display, f"{client.phone} ({client.name})"),
+        *((old, f"{client.phone} ({client.name})") for old in old_displays),
         (old_whatsapp, client.whatsapp),
         (old_telephone, client.telephone),
     ]
