@@ -311,8 +311,14 @@ class ClientsTests(unittest.TestCase):
     def test_workflow_four_case_event_matrix(self):
         base = Path(__file__).parents[1]
         workflow = CLIENTS_FIXTURE.read_text(encoding="utf-8")
-        expression = "github.event_name == 'workflow_dispatch' && (github.ref_type != 'branch' || inputs.dry_run != false)"
-        self.assertIn(expression, workflow)
+        for expression in (
+            'INPUT_DRY_RUN: ${{ inputs.dry_run }}',
+            '"$GITHUB_EVENT_NAME" == "workflow_dispatch"',
+            '"$GITHUB_REF_TYPE" != "branch"',
+            '"$INPUT_DRY_RUN" == "true"',
+        ):
+            self.assertIn(expression, workflow)
+        self.assertNotIn("env.DRY_RUN", workflow)
         cases = (
             ("push", "branch", True, False),
             ("workflow_dispatch", "branch", True, True),

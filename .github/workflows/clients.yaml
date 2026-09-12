@@ -26,7 +26,7 @@ jobs:
     env:
       SUMMARY_PATH: ${{ runner.temp }}/clients-summary.json
       CHANGED_PATHS: ${{ runner.temp }}/clients-changed-paths
-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && (github.ref_type != 'branch' || inputs.dry_run != false) }}
+      INPUT_DRY_RUN: ${{ inputs.dry_run }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -42,8 +42,11 @@ jobs:
         id: update
         run: |
           args=()
-          if [[ "$DRY_RUN" == "true" ]]; then
+          dry_run=false
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] &&
+             { [[ "$GITHUB_REF_TYPE" != "branch" ]] || [[ "$INPUT_DRY_RUN" == "true" ]]; }; then
             args+=(--dry-run)
+            dry_run=true
           fi
           python -B .github/scripts/update_clients.py \
             --repo-root . \
@@ -52,15 +55,16 @@ jobs:
             --paths-file "$CHANGED_PATHS" \
             --github-output "$GITHUB_OUTPUT" \
             "${args[@]}"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
       - name: Verify exact Git scope
-        if: steps.update.outputs.changed == 'true' && env.DRY_RUN == 'false'
+        if: steps.update.outputs.changed == 'true' && steps.update.outputs.dry_run == 'false'
         run: |
           python -B .github/scripts/update_clients.py \
             --repo-root . \
             --paths-file "$CHANGED_PATHS" \
             --verify-git
       - name: Commit and push exact changed paths
-        if: steps.update.outputs.changed == 'true' && env.DRY_RUN == 'false'
+        if: steps.update.outputs.changed == 'true' && steps.update.outputs.dry_run == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
