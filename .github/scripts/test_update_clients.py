@@ -57,6 +57,20 @@ def client(extra=()):
     return "|".join(values) + "\n"
 
 
+def contact_nav(multiple=True, nav_class="menu-info-kontak-container"):
+    second = (
+        '<li id="manager-2" class="menu-item"><a href="https://old.example/umar">✆ 0821 1447 7255 (Umar)</a></li>'
+        if multiple
+        else ""
+    )
+    return (
+        f'<nav class="{nav_class}" aria-label="Info Kontak"><ul>'
+        '<li id="address" class="menu-item"><a href="#">Jl. Kyai Tambak Deres 105 Surabaya</a></li>'
+        '<li id="manager-1" data-keep="yes"><a href="https://old.example/anthock">✆ 0821 1447 7155 (Anthock)</a></li>'
+        f"{second}</ul></nav>"
+    )
+
+
 class ClientsTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -132,6 +146,52 @@ class ClientsTests(unittest.TestCase):
         self.assertIn(NEW_WA, changed)
         self.assertNotIn(alternate, changed)
 
+    def test_navigation_contact_fallback_rewrites_first_and_removes_duplicates(self):
+        target = self.write_fixture(content=contact_nav())
+        (self.root / ".clients").write_text(client(), encoding="utf-8")
+        before = target.read_bytes()
+        summary = MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(summary["changed_count"], 1)
+        changed = target.read_text(encoding="utf-8")
+        self.assertIn('href="https://wa.me/620000000099"', changed)
+        self.assertIn(f"{NEW_PHONE} ({NEW_NAME})", changed)
+        self.assertIn("Jl. Kyai Tambak Deres 105 Surabaya", changed)
+        self.assertNotIn("0821 1447 7255", changed)
+        self.assertIn('data-keep="yes"', changed)
+        after_first = target.read_bytes()
+        MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(target.read_bytes(), after_first)
+        self.assertNotEqual(before, target.read_bytes())
+
+    def test_navigation_fallback_rejects_ambiguity_before_write(self):
+        cases = [
+            contact_nav().replace(
+                'href="https://old.example/anthock">',
+                'href="https://old.example/anthock"><a href="https://other.example">',
+            ),
+            contact_nav() + contact_nav(),
+        ]
+        for index, content in enumerate(cases):
+            target = self.write_fixture(f"ambiguous-{index}.html", content)
+            original = target.read_bytes()
+            (self.root / ".clients").write_text(client(), encoding="utf-8")
+            with self.assertRaises(MODULE.ClientsError):
+                MODULE.update(self.root, self.root / ".clients", False)
+            self.assertEqual(target.read_bytes(), original)
+
+    def test_navigation_fallback_address_client_is_rejected_and_unmatched_nav_is_noop(self):
+        target = self.write_fixture(content=contact_nav(nav_class="other-menu"))
+        original = target.read_bytes()
+        (self.root / ".clients").write_text(client([OLD_ADDRESS]), encoding="utf-8")
+        self.assertEqual(MODULE.update(self.root, self.root / ".clients", False)["changed_count"], 0)
+        self.assertEqual(target.read_bytes(), original)
+
+        target = self.write_fixture("address.html", contact_nav())
+        original = target.read_bytes()
+        with self.assertRaises(MODULE.ClientsError):
+            MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(target.read_bytes(), original)
+
     def test_five_and_six_field_records_and_category_filter(self):
         cases = [
             (OLD_ADDRESS, False, True),
@@ -191,6 +251,28 @@ class ClientsTests(unittest.TestCase):
         self.assertEqual(summary["changed_count"], 2)
         self.assertIn("Filtered Fixture", selected.read_text(encoding="utf-8"))
         self.assertIn(NEW_NAME, default.read_text(encoding="utf-8"))
+
+    def test_filter_matches_complete_relative_filename_case_insensitively(self):
+        selected = self.write_fixture("pages/PORTABLE.HTML")
+        other = self.write_fixture("pages/not-a-match.html")
+        values = "|".join(
+            ["Filename Fixture", NEW_PHONE, NEW_WA, NEW_TEL, "portable.html"]
+        )
+        (self.root / ".clients").write_text(values + "\n", encoding="utf-8")
+        summary = MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(summary["changed_count"], 1)
+        self.assertIn("Filename Fixture", selected.read_text(encoding="utf-8"))
+        self.assertIn(OLD_NAME, other.read_text(encoding="utf-8"))
+
+    def test_overlapping_filename_filters_reject_without_writes(self):
+        target = self.write_fixture("portable-portabel.html")
+        first = "|".join(["Portable", NEW_PHONE, NEW_WA, NEW_TEL, "portable"])
+        second = "|".join(["Portabel", NEW_PHONE, NEW_WA, NEW_TEL, "portabel"])
+        (self.root / ".clients").write_text(first + "\n" + second + "\n", encoding="utf-8")
+        before = target.read_bytes()
+        with self.assertRaises(MODULE.ClientsError):
+            MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(target.read_bytes(), before)
 
     def test_plans_all_files_before_any_write(self):
         first = self.write_fixture("a.html")

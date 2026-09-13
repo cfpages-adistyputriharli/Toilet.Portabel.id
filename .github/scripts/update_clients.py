@@ -52,6 +52,18 @@ DIV_RE = re.compile(
     r"(?P<body>.*?)</div\s*>",
     re.IGNORECASE | re.DOTALL,
 )
+NAV_RE = re.compile(
+    r"<nav\b(?P<attrs>[^>]*)>(?P<body>.*?)</nav\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+CLASS_ATTR_RE = re.compile(
+    r"\bclass\s*=\s*([\"'])(.*?)\1", re.IGNORECASE | re.DOTALL
+)
+LI_RE = re.compile(r"<li\b(?P<attrs>[^>]*)>(?P<body>.*?)</li\s*>", re.IGNORECASE | re.DOTALL)
+ANCHOR_RE = re.compile(
+    r"<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
 HREF_RE = re.compile(r"\bhref\s*=\s*([\"'])(.*?)\1", re.IGNORECASE | re.DOTALL)
 SPAN_RE = re.compile(r"<span\b[^>]*>([^<>]+)</span\s*>", re.IGNORECASE | re.DOTALL)
 DISPLAY_RE = re.compile(r"\+?[0-9][0-9 ()+.\-]{6,}[0-9]\s*\([^<>\r\n()]+\)")
@@ -192,7 +204,13 @@ def parse_clients(path: Path) -> list[Client]:
     return clients
 
 
+def _filter_path(path: str) -> str:
+    """Normalize the complete relative HTML path used by every filter."""
+    return str(path).replace("\\", "/").casefold()
+
+
 def _terms_match(terms: tuple[str, ...], path: str) -> bool:
+    path = _filter_path(path)
     positives = tuple(term for term in terms if not term.startswith("-"))
     negatives = tuple(term[1:] for term in terms if term.startswith("-"))
     return (not positives or any(term in path for term in positives)) and not any(
@@ -201,7 +219,7 @@ def _terms_match(terms: tuple[str, ...], path: str) -> bool:
 
 
 def _filter_matches(rule: Filter, path: str) -> bool:
-    path = path.casefold()
+    path = _filter_path(path)
     if rule.simple:
         return _terms_match(rule.simple, path)
     for categories, cities in rule.clauses:
@@ -259,7 +277,53 @@ def _transform(text: str, client: Client) -> tuple[bool, str]:
         if markers:
             blocks.append((markers, match.group("body")))
     if not blocks:
-        return False, text
+        nav_matches = []
+        for nav in NAV_RE.finditer(text):
+            class_match = CLASS_ATTR_RE.search(nav.group("attrs"))
+            classes = set(class_match.group(2).casefold().split()) if class_match else set()
+            if "menu-info-kontak-container" in classes:
+                nav_matches.append(nav)
+        if len(nav_matches) > 1:
+            raise ClientsError("matched HTML has multiple contact nav containers")
+        if not nav_matches:
+            return False, text
+        if client.address is not None:
+            raise ClientsError("fallback contact cannot include address")
+
+        nav = nav_matches[0]
+        recognized: list[tuple[re.Match[str], str]] = []
+        for item in LI_RE.finditer(nav.group("body")):
+            anchors = list(ANCHOR_RE.finditer(item.group("body")))
+            anchor_openings = re.findall(r"<a\b", item.group("body"), re.IGNORECASE)
+            visible = re.sub(r"<[^>]*>", "", item.group("body"))
+            displays = DISPLAY_RE.findall(visible)
+            if not displays:
+                continue
+            if len(anchor_openings) != 1 or len(anchors) != 1 or len(displays) != 1:
+                raise ClientsError("fallback contact item must contain one anchor and one displayed phone/name")
+            anchor = anchors[0]
+            hrefs = HREF_RE.findall(anchor.group("attrs"))
+            if len(hrefs) != 1:
+                raise ClientsError("fallback contact item has ambiguous anchor destination")
+            recognized.append((item, displays[0]))
+        if not recognized:
+            return False, text
+
+        body = nav.group("body")
+        first_item, display = recognized[0]
+        first_anchor = next(ANCHOR_RE.finditer(first_item.group("body")))
+        anchor_text = first_anchor.group(0)
+        href_match = HREF_RE.search(first_anchor.group("attrs"))
+        assert href_match is not None
+        anchor_text = anchor_text.replace(
+            href_match.group(2), client.whatsapp, 1
+        ).replace(display, f"{client.phone} ({client.name})", 1)
+        first_body = first_item.group("body").replace(first_anchor.group(0), anchor_text, 1)
+        body = body.replace(first_item.group(0), first_item.group(0).replace(first_item.group("body"), first_body, 1), 1)
+        for item, _ in recognized[1:]:
+            body = body.replace(item.group(0), "", 1)
+        result = text[: nav.start()] + nav.group(0).replace(nav.group("body"), body, 1) + text[nav.end() :]
+        return True, result
 
     displays: list[str] = []
     whatsapp: list[str] = []
