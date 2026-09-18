@@ -86,7 +86,7 @@ class ClientsTests(unittest.TestCase):
         path.write_bytes((b"\xef\xbb\xbf" if bom else b"") + data)
         return path
 
-    def run_cli(self, clients=".clients", dry_run=False):
+    def run_cli(self, clients=".clients", dry_run=False, previous=None):
         command = [
             sys.executable,
             "-B",
@@ -102,6 +102,8 @@ class ClientsTests(unittest.TestCase):
             "--github-output",
             str(self.root / "output.txt"),
         ]
+        if previous is not None:
+            command.extend(["--previous-clients", str(previous)])
         if dry_run:
             command.append("--dry-run")
         return subprocess.run(command, text=True, capture_output=True)
@@ -145,6 +147,72 @@ class ClientsTests(unittest.TestCase):
         changed = target.read_text(encoding="utf-8")
         self.assertIn(NEW_WA, changed)
         self.assertNotIn(alternate, changed)
+
+    def test_floating_anchor_text_without_span_is_recognized(self):
+        target = self.write_fixture(
+            content=(
+                f'<div class="sms-floating"><a href="{OLD_WA}">'
+                f"{OLD_PHONE} ({OLD_NAME})</a></div>"
+                f'<div class="tlp-floating"><a href="{OLD_TEL}">'
+                f"{OLD_PHONE} ({OLD_NAME})</a></div>"
+            )
+        )
+        (self.root / ".clients").write_text(client(), encoding="utf-8")
+        summary = MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(summary["changed_count"], 1)
+        changed = target.read_text(encoding="utf-8")
+        self.assertIn(f"{NEW_PHONE} ({NEW_NAME})", changed)
+        self.assertIn(NEW_WA, changed)
+        self.assertIn(NEW_TEL, changed)
+
+    def test_empty_image_floating_blocks_gain_contact_links(self):
+        target = self.write_fixture(
+            content=(
+                '<div class="sms-floating"><img src="wa.png" alt=""></div>'
+                '<div class="tlp-floating"><img src="tel.png" alt=""></div>'
+            )
+        )
+        (self.root / ".clients").write_text(client(), encoding="utf-8")
+        self.assertEqual(
+            MODULE.update(self.root, self.root / ".clients", False)["changed_count"], 1
+        )
+        changed = target.read_text(encoding="utf-8")
+        self.assertIn(f'href="{NEW_WA}"', changed)
+        self.assertIn(f'href="{NEW_TEL}"', changed)
+        self.assertEqual(changed.count(f"{NEW_PHONE} ({NEW_NAME})"), 2)
+
+    def test_duplicate_floating_blocks_with_displays_are_all_rewritten(self):
+        other_phone = "0811 1111 1111"
+        other_name = "Other Fixture"
+        other_wa = "https://example.test/other-wa"
+        other_tel = "tel:+621111111111"
+        target = self.write_fixture(
+            content=(
+                html()
+                + html()
+                .replace(OLD_PHONE, other_phone)
+                .replace(OLD_NAME, other_name)
+                .replace(OLD_WA, other_wa)
+                .replace(OLD_TEL, other_tel)
+            )
+        )
+        (self.root / ".clients").write_text(client(), encoding="utf-8")
+        summary = MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(summary["changed_count"], 1)
+        changed = target.read_text(encoding="utf-8")
+        for old in (
+            OLD_PHONE,
+            OLD_NAME,
+            OLD_WA,
+            OLD_TEL,
+            other_phone,
+            other_name,
+            other_wa,
+            other_tel,
+        ):
+            self.assertNotIn(old, changed)
+        self.assertEqual(changed.count(NEW_WA), 2)
+        self.assertEqual(changed.count(NEW_TEL), 2)
 
     def test_navigation_contact_fallback_rewrites_first_and_removes_duplicates(self):
         target = self.write_fixture(content=contact_nav())
@@ -264,6 +332,18 @@ class ClientsTests(unittest.TestCase):
         self.assertIn("Filename Fixture", selected.read_text(encoding="utf-8"))
         self.assertIn(OLD_NAME, other.read_text(encoding="utf-8"))
 
+    def test_basename_filter_ignores_directory_only_match(self):
+        selected = self.write_fixture("pages/toilet-PORTABEL-jakarta.html")
+        directory_only = self.write_fixture("portable/category/index.html")
+        values = "|".join(
+            ["Filename Fixture", NEW_PHONE, NEW_WA, NEW_TEL, "basename:portable,portabel"]
+        )
+        (self.root / ".clients").write_text(values + "\n", encoding="utf-8")
+        summary = MODULE.update(self.root, self.root / ".clients", False)
+        self.assertEqual(summary["changed_count"], 1)
+        self.assertIn("Filename Fixture", selected.read_text(encoding="utf-8"))
+        self.assertIn(OLD_NAME, directory_only.read_text(encoding="utf-8"))
+
     def test_overlapping_filename_filters_reject_without_writes(self):
         target = self.write_fixture("portable-portabel.html")
         first = "|".join(["Portable", NEW_PHONE, NEW_WA, NEW_TEL, "portable"])
@@ -332,6 +412,24 @@ class ClientsTests(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "summary.json").read_text())["mode"], "dry-run")
         self.assertEqual((self.root / "paths.bin").read_bytes(), b"index.html\0")
 
+    def test_previous_clients_limits_update_to_changed_row(self):
+        portable = self.write_fixture("portable.html")
+        ordinary = self.write_fixture("ordinary.html")
+        previous = self.root / "clients-before"
+        previous.write_text(client(), encoding="utf-8")
+        (self.root / ".clients").write_text(
+            "|".join(
+                ["Anthock", NEW_PHONE, NEW_WA, NEW_TEL, "basename:portable,portabel"]
+            )
+            + "\n"
+            + client(["-portable,-portabel"]),
+            encoding="utf-8",
+        )
+        result = self.run_cli(previous=previous)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Anthock", portable.read_text(encoding="utf-8"))
+        self.assertIn(OLD_NAME, ordinary.read_text(encoding="utf-8"))
+
     def test_verify_git_exact_scope_and_outside_dirty_poison(self):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         target = self.write_fixture()
@@ -396,6 +494,8 @@ class ClientsTests(unittest.TestCase):
         for expression in (
             'INPUT_DRY_RUN: ${{ inputs.dry_run }}',
             '"$GITHUB_EVENT_NAME" == "workflow_dispatch"',
+            'git show "${{ github.event.before }}:.clients"',
+            '--previous-clients "$RUNNER_TEMP/clients-before"',
             '"$GITHUB_REF_TYPE" != "branch"',
             '"$INPUT_DRY_RUN" == "true"',
             '"$RUNNER_TEMP/clients-summary.json"',
